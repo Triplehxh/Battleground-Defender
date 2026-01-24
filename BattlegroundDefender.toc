@@ -1,0 +1,9 @@
+## Interface: 120000
+## Title: Battleground Defender
+## Notes: Advanced BG reporting tool with modular snap-layout and auto-event detection.
+## Author: Triplehxh-Blackhand
+## Version: 3.6
+## SavedVariables: BattlegroundDefenderDB
+## IconTexture: Interface\Icons\Achievement_PVP_A_01
+
+core.lua
