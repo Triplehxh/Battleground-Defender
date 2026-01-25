@@ -1,9 +1,14 @@
-## Interface: 120000
+## Interface: 110007, 120000
 ## Title: Battleground Defender
-## Notes: Advanced BG reporting tool with modular snap-layout and auto-event detection.
+## Notes: Tactical BG communication tool with modular layout and auto-events.
 ## Author: Triplehxh-Blackhand
-## Version: 3.6
+## Version: 3.7
 ## SavedVariables: BattlegroundDefenderDB
-## IconTexture: Interface\Icons\Achievement_PVP_A_01
+## IconTexture: Interface\AddOns\BattlegroundDefender\icon
+## AddonCompartmentFunc: BattlegroundDefender_OnCompartmentClick
 
+# Load libs
+libs.xml
+
+# Addon-Code
 core.lua

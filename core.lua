@@ -1,21 +1,20 @@
 -------------------------------------------------------
--- Battleground Defender
+-- Battleground Defender v3.7
 -- Author: Triplehxh-Blackhand
--- Modernized redevelopment of the legacy BG Defender
+-- Fully featured with Minimap, Compartment, and Auto-Events
 -------------------------------------------------------
 
 local addonName, ns = ...
 
--- [1] LIBRARIES & MEDIA HANDLING
--- Using a getter for LSM to ensure it works even if loaded after this addon
-local function GetLSM()
-    return LibStub and LibStub("LibSharedMedia-3.0", true)
-end
+-- [1] LIBRARIES & MEDIA
+local function GetLSM() return LibStub and LibStub("LibSharedMedia-3.0", true) end
+local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
+local iconLib = LibStub and LibStub("LibDBIcon-1.0", true)
 
-local DEFAULT_SOUND_ID = 8959 -- Internal WoW RaidWarning Sound
+local DEFAULT_SOUND_ID = 8959 
 local fontList = { ["Default"] = "Fonts\\FRIZQT__.TTF" }
 
--- [2] LOCALIZATION STRINGS
+-- [2] LOCALIZATION
 local locale = GetLocale()
 local L = {
     ["INC"] = "INC", ["HELP"] = "HELP", ["EFC"] = "EFC", ["SAFE"] = "SAFE",
@@ -24,6 +23,7 @@ local L = {
     ["SMART_CAST"] = "Smart Cast (1-Click)", ["USE_RW"] = "Use RaidWarning (RW)",
     ["ENABLE_SOUND"] = "Enable Sound", ["FORCE_EN"] = "Always English Output",
     ["AUTO_EVENTS"] = "Auto Report Events (Flag/Base)",
+    ["SHOW_MINIMAP"] = "Show Minimap Icon",
     ["FONT_SIZE"] = "Font Size", ["BG_ALPHA"] = "BG Transparency", 
     ["BORDER_ALPHA"] = "Border Transparency", ["SPACING"] = "Button Spacing",
     ["FONT_BTN"] = "Font", ["SOUND_BTN"] = "Sound",
@@ -38,22 +38,23 @@ if locale == "deDE" then
     L["BORDER_ALPHA"] = "Rand"; L["SAFE_MSG"] = "Sicher / Frei"; 
     L["HELP_MSG"] = "Hilfe benötigt @"; L["DEFAULT"] = "Standard";
     L["TEST_MODE"] = "Test Modus (SAY)"; L["ENABLE_SOUND"] = "Ton einschalten";
-    L["AUTO_EVENTS"] = "Auto-Meldung (Flagge/Basis)"
+    L["AUTO_EVENTS"] = "Auto-Meldung (Flagge/Basis)";
+    L["SHOW_MINIMAP"] = "Minimap Icon anzeigen"
 end
 
--- Map Translation Table
 local mapTrans = {
     ["Sägewerk"] = "Lumber Mill", ["Schmiede"] = "Blacksmith", ["Ställe"] = "Stables", ["Goldmine"] = "Gold Mine", ["Hof"] = "Farm",
     ["Wasserwerk"] = "Waterworks", ["Leuchtturm"] = "Lighthouse", ["Minen"] = "Mines", ["Ruinen"] = "Ruins", ["Schrein"] = "Shrine",
     ["Steinbruch"] = "Quarry", ["Marktplatz"] = "Market", ["Friedhof"] = "Graveyard", ["Festung"] = "Keep"
 }
 
--- [3] DEFAULT SETTINGS
+-- [3] DEFAULTS
 local defaults = {
     fontSize = 12, fontName = "Default", soundName = "Default",
     soundEnabled = true, autoShow = true, locked = true, 
     isTestMode = false, forceEnglish = true, smartCast = true, useRW = true,
     autoEvents = true,
+    minimap = { hide = false },
     bgAlpha = 0, borderAlpha = 0, buttonSpacing = 0,
     posINC = "BOTTOM", posHELP = "BOTTOM", posEFC = "BOTTOM", posSAFE = "BOTTOM",
     point = "CENTER", relativePoint = "CENTER", xOfs = 0, yOfs = 0
@@ -79,7 +80,7 @@ end)
 
 frame:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16, insets = { 4, 4, 4, 4 } })
 
-local coreGroup = CreateFrame("Frame", nil, frame) -- Numeric buttons anchor
+local coreGroup = CreateFrame("Frame", nil, frame)
 local containers = { TOP = CreateFrame("Frame", nil, frame), BOTTOM = CreateFrame("Frame", nil, frame), LEFT = CreateFrame("Frame", nil, frame), RIGHT = CreateFrame("Frame", nil, frame) }
 
 local resizeBtn = CreateFrame("Button", nil, frame)
@@ -88,7 +89,7 @@ resizeBtn:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
 resizeBtn:SetScript("OnMouseDown", function() if not BattlegroundDefenderDB.locked then frame:StartSizing("BOTTOMRIGHT") end end)
 resizeBtn:SetScript("OnMouseUp", function() frame:StopMovingOrSizing(); ns.UpdateLayout() end)
 
--- [5] LAYOUT ENGINE (Snap and Wrap Logic)
+-- [5] LAYOUT ENGINE
 ns.UpdateLayout = function()
     local db = BattlegroundDefenderDB; if not db then return end
     frame:SetBackdropColor(0, 0, 0, db.bgAlpha); frame:SetBackdropBorderColor(1, 1, 1, db.borderAlpha)
@@ -98,7 +99,7 @@ ns.UpdateLayout = function()
     local fontPath = (LSM and LSM:Fetch("font", db.fontName)) or fontList["Default"]
     local pad = db.buttonSpacing or 0
 
-    -- Update Numeric Core
+    -- Numbers Core
     local tw, th = 0, 0
     for i, btn in ipairs(numButtons) do
         local fs = btn:GetFontString(); if fs then fs:SetFont(fontPath, db.fontSize, "OUTLINE") end
@@ -110,7 +111,7 @@ ns.UpdateLayout = function()
     end
     coreGroup:SetSize(tw, th); coreGroup:SetPoint("CENTER", frame, "CENTER", 0, 0)
 
-    -- Define Snap Order: INC -> HELP -> EFC -> SAFE
+    -- Actions Snap
     local keys = {"INC", "HELP", "EFC", "SAFE"}
     local sideGroups = { TOP = {}, BOTTOM = {}, LEFT = {}, RIGHT = {} }
     for _, key in ipairs(keys) do
@@ -118,7 +119,6 @@ ns.UpdateLayout = function()
         if btn then table.insert(sideGroups[db["pos"..key] or "BOTTOM"], btn) end
     end
 
-    -- Calculate Bounding Box
     local minX, maxX, minY, maxY = coreGroup:GetLeft(), coreGroup:GetRight(), coreGroup:GetBottom(), coreGroup:GetTop()
     for side, btns in pairs(sideGroups) do
         local c = containers[side]; c:ClearAllPoints()
@@ -126,7 +126,6 @@ ns.UpdateLayout = function()
         elseif side == "BOTTOM" then c:SetPoint("TOP", coreGroup, "BOTTOM", 0, -pad)
         elseif side == "LEFT" then c:SetPoint("RIGHT", coreGroup, "LEFT", -pad, 0)
         else c:SetPoint("LEFT", coreGroup, "RIGHT", pad, 0) end
-        
         local cw, ch = 0, 0
         for i, btn in ipairs(btns) do
             local fs = btn:GetFontString(); if fs then fs:SetFont(fontPath, db.fontSize, "OUTLINE") end
@@ -147,9 +146,41 @@ ns.UpdateLayout = function()
         end
     end
     if minX and maxX and minY and maxY then frame:SetSize((maxX - minX) + 20, (maxY - minY) + 24) end
+
+    -- Minimap Toggle
+    if iconLib then
+        if db.minimap.hide then iconLib:Hide(addonName) else iconLib:Show(addonName) end
+    end
 end
 
--- [6] AUDIO & REPORTING LOGIC
+-- [6] COMPARTMENT & MINIMAP LOGIC
+function BattlegroundDefender_OnCompartmentClick()
+    if BDConfigFrame:IsShown() then BDConfigFrame:Hide() else BDConfigFrame:Show() end
+end
+
+local function RegisterMinimap()
+    if not LDB or not iconLib then return end
+    local BD_LDB = LDB:NewDataObject(addonName, {
+        type = "launcher",
+        text = "Battleground Defender",
+        icon = "Interface\\AddOns\\BattlegroundDefender\\icon",
+        OnClick = function(_, button)
+            if button == "RightButton" then 
+                BattlegroundDefender_OnCompartmentClick()
+            else
+                if frame:IsShown() then frame:Hide() else frame:Show() end
+            end
+        end,
+        OnTooltipShow = function(tooltip)
+            tooltip:AddLine("|cff00ffffBattleground Defender|r")
+            tooltip:AddLine("|cffaaaaaaLeft-Click:|r Toggle Interface")
+            tooltip:AddLine("|cffaaaaaaRight-Click:|r Open Settings")
+        end,
+    })
+    iconLib:Register(addonName, BD_LDB, BattlegroundDefenderDB.minimap)
+end
+
+-- [7] AUDIO & REPORTING
 local function PlayAlertSound()
     local db = BattlegroundDefenderDB; if not db.soundEnabled then return end
     if db.soundName == "Default" then PlaySound(DEFAULT_SOUND_ID, "Master")
@@ -157,7 +188,8 @@ local function PlayAlertSound()
 end
 
 local function SendMsg(msg)
-    local db = BattlegroundDefenderDB; if db.isTestMode then SendChatMessage("[TEST] " .. msg, "SAY") else 
+    local db = BattlegroundDefenderDB
+    if db.isTestMode then SendChatMessage("[TEST] " .. msg, "SAY") else 
         local c = (IsInGroup(LE_PARTY_CATEGORY_INSTANCE) and "INSTANCE_CHAT") or (IsInRaid() and "RAID") or "PARTY"
         if c == "INSTANCE_CHAT" and db.useRW and IsInRaid() and (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")) then c = "RAID_WARNING" end
         SendChatMessage(msg, c)
@@ -177,7 +209,7 @@ local function SendReport(rawLoc, prefix)
     SendMsg(fPrefix .. " " .. incW .. " " .. loc)
 end
 
--- [7] AUTOMATIC EVENT TRACKING (Flags/Bases)
+-- [8] AUTO EVENTS
 local function OnBGMessage(msg)
     if not BattlegroundDefenderDB or not BattlegroundDefenderDB.autoEvents then return end
     local pName = UnitName("player")
@@ -189,7 +221,7 @@ local function OnBGMessage(msg)
     end
 end
 
--- [8] BUTTON FACTORY
+-- [9] BUTTON FACTORY
 local function CreateActionBtn(key, text, color, parent, func)
     local btn = CreateFrame("Button", nil, parent, "GameMenuButtonTemplate")
     btn:SetText(text); btn:SetMovable(true); btn:RegisterForDrag("LeftButton")
@@ -205,7 +237,6 @@ local function CreateActionBtn(key, text, color, parent, func)
     btn:SetScript("OnClick", func); actionButtons[key] = btn; return btn
 end
 
--- Init Core Numerics
 for i = 1, 4 do 
     local btn = CreateFrame("Button", nil, coreGroup, "GameMenuButtonTemplate")
     btn:SetText(tostring(i)); btn:SetScript("OnClick", function() currentCount = tostring(i); if BattlegroundDefenderDB.smartCast then SendReport(GetSubZoneText()~="" and GetSubZoneText() or GetZoneText()) end end)
@@ -215,15 +246,14 @@ local btn5 = CreateFrame("Button", nil, coreGroup, "GameMenuButtonTemplate")
 btn5:SetText("5+"); btn5:SetScript("OnClick", function() currentCount = "5+"; if BattlegroundDefenderDB.smartCast then SendReport(GetSubZoneText()~="" and GetSubZoneText() or GetZoneText()) end end)
 table.insert(numButtons, btn5)
 
--- Init Action Satellites
 CreateActionBtn("INC", L["INC"], "red", containers.BOTTOM, function() SendReport(GetSubZoneText()~="" and GetSubZoneText() or GetZoneText()) end)
 CreateActionBtn("HELP", L["HELP"], "blue", containers.BOTTOM, function() SendReport(GetSubZoneText()~="" and GetSubZoneText() or GetZoneText(), L["HELP_MSG"]) end)
 CreateActionBtn("EFC", L["EFC"], "orange", containers.BOTTOM, function() SendReport(GetSubZoneText()~="" and GetSubZoneText() or GetZoneText(), L["EFC_MSG"]) end)
 CreateActionBtn("SAFE", L["SAFE"], "green", containers.BOTTOM, function() SendReport(GetSubZoneText()~="" and GetSubZoneText() or GetZoneText(), L["SAFE_MSG"]) end)
 
--- [9] SETTINGS UI
+-- [10] SETTINGS UI
 local cfg = CreateFrame("Frame", "BDConfigFrame", UIParent, "BackdropTemplate")
-cfg:SetSize(280, 560); cfg:SetPoint("CENTER"); cfg:SetFrameStrata("DIALOG"); cfg:Hide(); cfg:SetMovable(true); cfg:EnableMouse(true)
+cfg:SetSize(280, 600); cfg:SetPoint("CENTER"); cfg:SetFrameStrata("DIALOG"); cfg:Hide(); cfg:SetMovable(true); cfg:EnableMouse(true)
 cfg:RegisterForDrag("LeftButton"); cfg:SetScript("OnDragStart", cfg.StartMoving); cfg:SetScript("OnDragStop", cfg.StopMovingOrSizing); table.insert(UISpecialFrames, "BDConfigFrame")
 cfg:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16, insets = { 4, 4, 4, 4 } })
 CreateFrame("Button", nil, cfg, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -5, -5)
@@ -231,12 +261,23 @@ CreateFrame("Button", nil, cfg, "UIPanelCloseButton"):SetPoint("TOPRIGHT", -5, -
 local function CreateCheck(text, dbKey, y)
     local cb = CreateFrame("CheckButton", nil, cfg, "ChatConfigCheckButtonTemplate")
     cb:SetPoint("TOPLEFT", 10, y); cb.Text:SetText(text)
-    cb:SetScript("OnShow", function(self) if BattlegroundDefenderDB then self:SetChecked(BattlegroundDefenderDB[dbKey]) end end)
-    cb:SetScript("OnClick", function(self) BattlegroundDefenderDB[dbKey] = self:GetChecked(); ns.UpdateLayout() end)
+    cb:SetScript("OnShow", function(self) 
+        if BattlegroundDefenderDB then 
+            if dbKey == "minimap_show" then self:SetChecked(not BattlegroundDefenderDB.minimap.hide)
+            else self:SetChecked(BattlegroundDefenderDB[dbKey]) end
+        end 
+    end)
+    cb:SetScript("OnClick", function(self) 
+        if dbKey == "minimap_show" then BattlegroundDefenderDB.minimap.hide = not self:GetChecked()
+        else BattlegroundDefenderDB[dbKey] = self:GetChecked() end
+        ns.UpdateLayout() 
+    end)
 end
+
 CreateCheck(L["AUTO_OPEN"], "autoShow", -35); CreateCheck(L["LOCK"], "locked", -60)
 CreateCheck(L["TEST_MODE"], "isTestMode", -85); CreateCheck(L["FORCE_EN"], "forceEnglish", -110)
 CreateCheck(L["AUTO_EVENTS"], "autoEvents", -135); CreateCheck(L["ENABLE_SOUND"], "soundEnabled", -160)
+CreateCheck(L["SHOW_MINIMAP"], "minimap_show", -185)
 
 local function CreateSlider(text, dbKey, min, max, step, y)
     local s = CreateFrame("Slider", addonName..dbKey, cfg, "OptionsSliderTemplate")
@@ -244,7 +285,7 @@ local function CreateSlider(text, dbKey, min, max, step, y)
     s:SetScript("OnShow", function(self) if BattlegroundDefenderDB then self:SetValue(BattlegroundDefenderDB[dbKey]) end end)
     s:SetScript("OnValueChanged", function(self, v) if BattlegroundDefenderDB then BattlegroundDefenderDB[dbKey] = v; ns.UpdateLayout() end end)
 end
-CreateSlider(L["FONT_SIZE"], "fontSize", 8, 32, 1, -210); CreateSlider(L["BG_ALPHA"], "bgAlpha", 0, 1, 0.1, -260); CreateSlider(L["BORDER_ALPHA"], "borderAlpha", 0, 1, 0.1, -310); CreateSlider(L["SPACING"], "buttonSpacing", 0, 30, 1, -360)
+CreateSlider(L["FONT_SIZE"], "fontSize", 8, 32, 1, -235); CreateSlider(L["BG_ALPHA"], "bgAlpha", 0, 1, 0.1, -285); CreateSlider(L["BORDER_ALPHA"], "borderAlpha", 0, 1, 0.1, -335); CreateSlider(L["SPACING"], "buttonSpacing", 0, 30, 1, -385)
 
 local selFrame = CreateFrame("Frame", "BDSelectionFrame", UIParent, "BackdropTemplate")
 selFrame:SetSize(350, 400); selFrame:SetPoint("CENTER"); selFrame:SetFrameStrata("TOOLTIP"); selFrame:Hide()
@@ -271,8 +312,8 @@ local function OpenSelection(mType, cb)
     scrollChild:SetHeight(math.abs(y) + 20)
 end
 
-local fBtn = CreateFrame("Button", nil, cfg, "UIPanelButtonTemplate"); fBtn:SetSize(200, 25); fBtn:SetPoint("TOP", 0, -410)
-local sBtn = CreateFrame("Button", nil, cfg, "UIPanelButtonTemplate"); sBtn:SetSize(200, 25); sBtn:SetPoint("TOP", 0, -445)
+local fBtn = CreateFrame("Button", nil, cfg, "UIPanelButtonTemplate"); fBtn:SetSize(200, 25); fBtn:SetPoint("TOP", 0, -435)
+local sBtn = CreateFrame("Button", nil, cfg, "UIPanelButtonTemplate"); sBtn:SetSize(200, 25); sBtn:SetPoint("TOP", 0, -470)
 fBtn:SetScript("OnClick", function() OpenSelection("font", function(v) BattlegroundDefenderDB.fontName = v end) end)
 sBtn:SetScript("OnClick", function() OpenSelection("sound", function(v) BattlegroundDefenderDB.soundName = v end) end)
 cfg:SetScript("OnUpdate", function() if BattlegroundDefenderDB then fBtn:SetText(L["FONT_BTN"]..": "..BattlegroundDefenderDB.fontName); sBtn:SetText(L["SOUND_BTN"]..": "..BattlegroundDefenderDB.soundName) end end)
@@ -280,7 +321,7 @@ cfg:SetScript("OnUpdate", function() if BattlegroundDefenderDB then fBtn:SetText
 local optBtn = CreateFrame("Button", nil, frame); optBtn:SetSize(20, 20); optBtn:SetPoint("TOPRIGHT", -5, -5); optBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
 optBtn:SetScript("OnClick", function() if cfg:IsShown() then cfg:Hide() else cfg:Show(); cfg:SetPoint("CENTER") end end)
 
--- [10] SLASH COMMANDS
+-- [11] SLASH & INIT
 local function ShowHelp()
     print("|cff00ffffBattleground Defender Help:|r")
     print(" /bd help - Shows this command list")
@@ -295,7 +336,6 @@ SLASH_BATTLEGROUNDDEFENDER1 = "/bd"; SlashCmdList["BATTLEGROUNDDEFENDER"] = func
     elseif cmd == "help" or cmd == "" then ShowHelp() end
 end
 
--- [11] EVENT INITIALIZATION
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("PLAYER_LOGIN"); ev:RegisterEvent("ZONE_CHANGED_NEW_AREA"); ev:RegisterEvent("CHAT_MSG_BG_SYSTEM_NEUTRAL"); ev:RegisterEvent("CHAT_MSG_BG_SYSTEM_ALLIANCE"); ev:RegisterEvent("CHAT_MSG_BG_SYSTEM_HORDE")
 ev:SetScript("OnEvent", function(self, event, msg)
@@ -303,6 +343,7 @@ ev:SetScript("OnEvent", function(self, event, msg)
         BattlegroundDefenderDB = BattlegroundDefenderDB or CopyTable(defaults)
         for k, v in pairs(defaults) do if BattlegroundDefenderDB[k] == nil then BattlegroundDefenderDB[k] = v end end
         if BattlegroundDefenderDB.point then frame:ClearAllPoints(); frame:SetPoint(BattlegroundDefenderDB.point, UIParent, BattlegroundDefenderDB.relativePoint or "CENTER", BattlegroundDefenderDB.xOfs, BattlegroundDefenderDB.yOfs) end
+        RegisterMinimap()
         ns.UpdateLayout()
     elseif event == "ZONE_CHANGED_NEW_AREA" then
         local _, t = IsInInstance(); if BattlegroundDefenderDB and BattlegroundDefenderDB.autoShow then if t == "pvp" then frame:Show() else frame:Hide() end end
