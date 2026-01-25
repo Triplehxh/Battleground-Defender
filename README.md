@@ -1,5 +1,9 @@
 # Battleground Defender (v3.7)
 
+<p align="center">
+  <img src="icon.png" width="400" height="400" alt="Battleground Defender Logo">
+</p>
+
 **Battleground Defender** is a powerful communication and tactical reporting tool for World of Warcraft (Retail & Midnight). It is designed for coordinated Battleground play, combining the classic logic of *AB Defender* with a modern, flexible interface and automated event detection.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
