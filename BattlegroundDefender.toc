@@ -2,7 +2,7 @@
 ## Title: Battleground Defender
 ## Notes: Tactical BG communication tool with modular layout and auto-events.
 ## Author: Triplehxh-Blackhand
-## Version: 3.7
+## Version: 8.0
 ## SavedVariables: BattlegroundDefenderDB
 ## IconTexture: Interface\AddOns\BattlegroundDefender\icon
 ## AddonCompartmentFunc: BattlegroundDefender_OnCompartmentClick
@@ -11,4 +11,5 @@
 libs.xml
 
 # Addon-Code
+
 core.lua
